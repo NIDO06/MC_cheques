@@ -1,47 +1,70 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { 
-  UserPlus, 
   Search, 
   Users, 
+  UserPlus,
   CheckCircle2, 
   XCircle, 
   ChevronLeft, 
   ChevronRight,
   SlidersHorizontal,
   Building2,
-  X
 } from "lucide-react";
+import { apiClient } from '@/lib/api';
 
-// Données fictives initiales (Mock Data)
-const INITIAL_MOCK_CLIENTS = [
-  { id: 1, name: "Ahmed Mansour", email: "ahmed.m@example.com", company: "Société Logistique Nord", type: "Entreprise", status: "Actif", avatar: "AM" },
-  { id: 2, name: "Fatoumata Traoré", email: "f.traore@holding.sn", company: "SENEGAL HOLDING SARL", type: "Entreprise", status: "Actif", avatar: "FT" },
-  { id: 3, name: "Marc Lefebvre", email: "m.lefebvre@global-tech.com", company: "Global Tech Solutions", type: "Entreprise", status: "Inactif", avatar: "ML" },
-  { id: 4, name: "Koffi Kouamé", email: "k.kouame@ivoire.ci", company: "Ivoire Invest", type: "Entreprise", status: "Actif", avatar: "KK" },
-  { id: 5, name: "Marie Diallo", email: "m.diallo@tech.gn", company: "Conakry Digital", type: "Entreprise", status: "Inactif", avatar: "MD" },
-];
+interface Client {
+  id: number;
+  name: string;
+  email: string;
+  status: string;
+  company?: string | null;
+  avatar?: string | null;
+  account_number?: string | null;
+  country_code?: string | null;
+}
+
+function getClientInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 export default function GestionClientsPage() {
-  // États de l'application
-  const [clients, setClients] = useState(INITIAL_MOCK_CLIENTS);
+  const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [currentPage, setCurrentPage] = useState(1);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // États pour le nouveau client dans le formulaire
-  const [newClient, setNewClient] = useState({ name: "", email: "", company: "", status: "Actif" });
+  const ITEMS_PER_PAGE = 5;
 
-  const ITEMS_PER_PAGE = 3;
+  useEffect(() => {
+    const loadClients = async () => {
+      setIsLoading(true);
+      try {
+        const data = await apiClient.getClients<Client>();
+        setClients(data);
+      } catch (error) {
+        console.error("Erreur lors de la récupération des clients :", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadClients();
+  }, []);
 
   // 1. Filtrage combiné : Recherche + Statut
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
       const matchesSearch = 
         client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        client.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        client.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         client.email.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = statusFilter === "Tous" || client.status === statusFilter;
@@ -67,29 +90,6 @@ export default function GestionClientsPage() {
     return { total, actifs, inactifs, pourcentageActifs };
   }, [clients]);
 
-  // 4. Soumission du formulaire d'ajout
-  const handleCreateClient = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newClient.name || !newClient.email || !newClient.company) {
-      alert("Veuillez remplir tous les champs requit.");
-      return;
-    }
-
-    // Génération des initiales pour l'avatar
-    const initials = newClient.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
-
-    const clientToAdd = {
-      id: Date.now(),
-      ...newClient,
-      type: "Entreprise",
-      avatar: initials || "CL"
-    };
-
-    setClients([clientToAdd, ...clients]);
-    setNewClient({ name: "", email: "", company: "", status: "Actif" });
-    setIsModalOpen(false); // Fermer le modal
-  };
-
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto relative">
       
@@ -102,11 +102,11 @@ export default function GestionClientsPage() {
           </p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center justify-center gap-2 bg-[#0B6634] hover:bg-[#074724] text-white font-bold px-6 py-3 rounded-xl text-sm shadow-md active:scale-95 transition-all"
+          disabled
+          className="flex items-center justify-center gap-2 bg-slate-200 text-slate-700 font-bold px-6 py-3 rounded-xl text-sm shadow-sm cursor-not-allowed"
         >
           <UserPlus className="h-4 w-4 stroke-[2.5]" />
-          <span>Ajouter un Client</span>
+          <span>Ajout client via backend</span>
         </button>
       </div>
 
@@ -182,13 +182,19 @@ export default function GestionClientsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginatedClients.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="py-10 text-center text-sm font-bold text-slate-500">
+                    Chargement des clients en cours...
+                  </td>
+                </tr>
+              ) : paginatedClients.length > 0 ? (
                 paginatedClients.map((client) => (
                   <tr key={client.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-slate-100 border border-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center shrink-0">
-                          {client.avatar}
+                          {client.avatar || getClientInitials(client.name)}
                         </div>
                         <div className="flex flex-col min-w-0">
                           <span className="text-sm font-bold text-slate-950 truncate">{client.name}</span>
@@ -199,7 +205,7 @@ export default function GestionClientsPage() {
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
                         <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
-                        <span className="truncate">{client.company}</span>
+                        <span className="truncate">{client.company || 'Entreprise non renseignée'}</span>
                       </div>
                     </td>
                     <td className="py-4 px-6 text-center whitespace-nowrap">
@@ -264,87 +270,6 @@ export default function GestionClientsPage() {
       </div>
 
       {/* 5. FENÊTRE MODAL D'AJOUT CLIENT (POPUP POP-IN INTERACTIF) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl border-2 border-slate-100 shadow-2xl p-6 relative space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-black text-slate-950">Créer un nouveau client</h3>
-              <button 
-                onClick={() => setIsModalOpen(false)} 
-                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateClient} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase">Nom complet du client</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="Ex: Alassane Diop" 
-                  value={newClient.name}
-                  onChange={(e) => setNewClient({...newClient, name: e.target.value})}
-                  className="w-full px-3 py-2 border-2 border-slate-200 bg-slate-50 rounded-xl text-sm text-slate-900 font-semibold focus:outline-none focus:border-[#0B6634] focus:bg-white transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase">Adresse Email</label>
-                <input 
-                  type="email" 
-                  required
-                  placeholder="Ex: a.diop@entreprise.com" 
-                  value={newClient.email}
-                  onChange={(e) => setNewClient({...newClient, email: e.target.value})}
-                  className="w-full px-3 py-2 border-2 border-slate-200 bg-slate-50 rounded-xl text-sm text-slate-900 font-semibold focus:outline-none focus:border-[#0B6634] focus:bg-white transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase">Entreprise / Raison Sociale</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="Ex: Sahel Tech Corp" 
-                  value={newClient.company}
-                  onChange={(e) => setNewClient({...newClient, company: e.target.value})}
-                  className="w-full px-3 py-2 border-2 border-slate-200 bg-slate-50 rounded-xl text-sm text-slate-900 font-semibold focus:outline-none focus:border-[#0B6634] focus:bg-white transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase">Statut initial</label>
-                <select 
-                  value={newClient.status}
-                  onChange={(e) => setNewClient({...newClient, status: e.target.value})}
-                  className="w-full px-3 py-2 border-2 border-slate-200 bg-slate-50 rounded-xl text-sm text-slate-900 font-bold focus:outline-none focus:border-[#0B6634] focus:bg-white transition-all"
-                >
-                  <option value="Actif">Actif</option>
-                  <option value="Inactif">Inactif</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 border-2 border-slate-200 text-slate-800 font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-all"
-                >
-                  Annuler
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 bg-[#0B6634] hover:bg-[#074724] text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md transition-all"
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );

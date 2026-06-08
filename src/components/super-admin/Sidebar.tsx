@@ -15,7 +15,7 @@ export default function Sidebar() {
 
   ];
   return (
-    <aside className="w-[280px] bg-[#f8fafc] border-r border-gray-200 flex flex-col justify-between h-screen sticky top-0 shrink-0">
+    <aside className="w-full max-w-[280px] bg-[#f8fafc] border-r border-gray-200 flex flex-col justify-between min-h-screen lg:sticky lg:top-0 shrink-0">
       {/* Haut de la Sidebar : Logo */}
       <div>
         <div className="h-[73px] px-6 flex items-center border-b border-gray-200 bg-white">

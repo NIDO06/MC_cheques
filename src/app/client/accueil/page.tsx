@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import type { ComponentType } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Banknote, 
@@ -13,13 +13,13 @@ import {
 
 // --- Interfaces ---
 interface FeatureCardProps {
-  icon: React.ComponentType<{ className?: string; size?: number }>;
+  icon: ComponentType<{ className?: string; size?: number }>;
   title: string;
   description: string;
 }
 
 interface PortalCardProps {
-  icon: React.ComponentType<{ className?: string; size?: number }>;
+  icon: ComponentType<{ className?: string; size?: number }>;
   title: string;
   description: string;
   buttonText: string;
@@ -39,6 +39,7 @@ const PortalCard = ({ icon: Icon, title, description, buttonText, onClick }: Por
       <p className="text-gray-500 text-sm leading-relaxed mb-6">{description}</p>
     </div>
     <button
+      type="button"
       onClick={onClick}
       className="flex items-center gap-2 text-sm font-bold text-[#0f6e38] hover:underline cursor-pointer group mt-2 text-left"
     >
@@ -60,7 +61,7 @@ const FeatureItem = ({ icon: Icon, title, description }: FeatureCardProps) => (
 );
 
 // --- Page Principale ---
-export default function LandingPage() {
+export default function AccueilPage() {
   const router = useRouter();
 
   const handleNavigateToLogin = () => {
@@ -95,6 +96,7 @@ export default function LandingPage() {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
           <button 
+            type="button"
             onClick={handleNavigateToLogin}
             className="bg-[#0f6e38] text-white px-8 py-3.5 rounded-xl font-bold text-sm shadow-md shadow-green-100 hover:bg-[#0b5229] transition-all cursor-pointer active:scale-[0.98]"
           >
@@ -153,7 +155,25 @@ export default function LandingPage() {
       </section>
 
       {/* 5. Section Partenaires de Confiance */}
-      
+      <section className="px-6 py-16 max-w-4xl mx-auto w-full">
+        <div className="text-center space-y-2 mb-10">
+          <p className="text-sm uppercase font-semibold tracking-[0.32em] text-[#0f6e38]/80">Partenaires de confiance</p>
+          <h3 className="text-2xl md:text-3xl font-extrabold text-gray-900">Nos partenaires bancaires</h3>
+          <p className="text-gray-500 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
+            Une collaboration avec des banques locales et internationales pour garantir la meilleure couverture et conformité.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {['ACE Finance', 'UBA', 'ECOBANK', 'BCEAO'].map((name) => (
+            <div key={name} className="bg-white border border-gray-200 rounded-3xl p-5 flex flex-col items-center justify-center text-center shadow-sm">
+              <div className="w-12 h-12 rounded-2xl bg-[#e8f2ec] flex items-center justify-center text-[#0f6e38] mb-3">
+                <Banknote size={20} />
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{name}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* 6. Footer légal */}
       <footer className="bg-white border-t border-gray-200 px-6 py-6 text-center space-y-4 w-full mt-auto text-[11px] text-gray-500 font-medium">

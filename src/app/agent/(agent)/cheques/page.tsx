@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { 
   Plus, 
   Factory, 
@@ -10,88 +10,76 @@ import {
   ChevronRight,
   X
 } from "lucide-react";
+import { apiClient } from '@/lib/api';
 
 // =========================================================================
-// STRUCTURE DES STOCKS DE DONNÉES FICTIVES INITIALES
+// Chargement des données de chéquiers réelles depuis le backend
 // =========================================================================
 
 // Espace 1 : Liste initiale des demandes visibles uniquement par l'Agent Connecté
-const INITIAL_DEMANDES_AGENT = [
-  { id: 1, ref: "#CHQ-2024-0891", clientName: "Amadou Koulibaly", account: "0045-89322-01", date: "14 Mai 2024", status: "En impression" },
-  { id: 2, ref: "#CHQ-2024-0872", clientName: "Fatoumata B. Diallo", account: "0045-12883-99", date: "10 Mai 2024", status: "En impression" },
-  { id: 3, ref: "#CHQ-2024-0755", clientName: "Ousmane Diarra", account: "0045-66721-04", date: "28 Avr. 2024", status: "En attente" },
-  { id: 4, ref: "#CHQ-2024-0910", clientName: "Koffi Kouamé", account: "0045-33441-22", date: "15 Mai 2024", status: "En impression" },
-  { id: 5, ref: "#CHQ-2024-0922", clientName: "Marie Diallo", account: "0045-77123-55", date: "20 Mai 2024", status: "En attente" }
-];
+type AgentDemande = {
+  id: number;
+  ref: string;
+  clientName: string;
+  account: string;
+  date: string;
+  status: string;
+};
 
-// Espace 2 : Base de données distincte simulant l'espace privé des Clients (invisible pour l'agent)
-const INITIAL_DEMANDES_CLIENTS = [
-  { id: 1, account: "0045-89322-01", owner: "Amadou Koulibaly", ref: "#CHQ-2024-0891", date: "14 Mai 2024", status: "En impression" },
-  { id: 2, account: "0045-12883-99", owner: "Fatoumata B. Diallo", ref: "#CHQ-2024-0872", date: "10 Mai 2024", status: "En impression" }
-];
+type ChequeBackendItem = {
+  id: number;
+  cheque_number?: string;
+  user?: { name?: string };
+  user_id?: number;
+  account_number?: string;
+  issued_at?: string;
+  statut_demande?: { name?: string };
+};
 
 export default function DemandesChequierPage() {
-  // --- ÉTATS DES DEUX ESPACES DE STOCKAGE DISTINCTS ---
-  const [demandesAgent, setDemandesAgent] = useState(INITIAL_DEMANDES_AGENT);
-  const [demandesClients, setDemandesClients] = useState(INITIAL_DEMANDES_CLIENTS);
-  
-  // Filtres et pagination pour l'interface de l'agent
+  const [demandesAgent, setDemandesAgent] = useState<AgentDemande[]>([]);
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Formulaire de nouvelle demande
   const [formClientName, setFormClientName] = useState("");
   const [formAccount, setFormAccount] = useState("");
 
   const ITEMS_PER_PAGE = 6;
+
+  useEffect(() => {
+    const loadCheques = async () => {
+      setIsLoading(true);
+      try {
+        const cheques = await apiClient.getCheques<ChequeBackendItem>();
+        const mapped = cheques.map((cheque) => ({
+          id: cheque.id,
+          ref: cheque.cheque_number || `#CHQ-${cheque.id}`,
+          clientName: cheque.user?.name || `Client ${cheque.user_id || 'N/A'}`,
+          account: cheque.account_number || 'N/A',
+          date: cheque.issued_at ? new Date(cheque.issued_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A',
+          status: cheque.statut_demande?.name === 'EN_PRODUCTION' ? 'En impression' : cheque.statut_demande?.name === 'EN_ATTENTE' ? 'En attente' : 'Livré',
+        }));
+
+        setDemandesAgent(mapped);
+      } catch (error) {
+        console.error('Erreur lors du chargement des demandes :', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCheques();
+  }, []);
 
   // =========================================================================
   // FONCTION CONFIRMER : DOUBLE REDIRECTION AUTOMATIQUE EN ARRIÈRE-PLAN
   // =========================================================================
   const handleCreateDemande = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formClientName.trim()) return;
-
-    const today = new Date();
-    const formattedDate = today.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-    const randomRef = `#CHQ-2024-${Math.floor(1000 + Math.random() * 9000)}`;
-    const finalAccount = formAccount.trim() || "0045-00000-00";
-    const uniqueId = Date.now();
-
-    // 1. FORMATAGE POUR L'ESPACE DE L'AGENT
-    const demandeAgentFormat = {
-      id: uniqueId,
-      ref: randomRef,
-      clientName: formClientName.trim(),
-      account: finalAccount,
-      date: formattedDate,
-      status: "En impression"
-    };
-
-    // 2. FORMATAGE POUR L'ESPACE PRIVÉ DU CLIENT
-    const demandeClientFormat = {
-      id: uniqueId,
-      account: finalAccount,
-      owner: formClientName.trim(), // Permet au client de filtrer ses propres chéquiers
-      ref: randomRef,
-      date: formattedDate,
-      status: "En impression"
-    };
-
-    // 3. ENREGISTREMENT ET CLOISONNEMENT SIMULTANÉ (Double Redirection)
-    setDemandesAgent([demandeAgentFormat, ...demandesAgent]);
-    setDemandesClients([demandeClientFormat, ...demandesClients]);
-
-    // Consoles logs pour vérifier la double insertion invisible à l'écran
-    console.log("Inscrit dans l'espace Agent:", demandeAgentFormat);
-    console.log("Redirigé de force vers l'espace Client:", demandeClientFormat);
-
-    // Réinitialisation de la vue de l'agent
-    setFormClientName("");
-    setFormAccount("");
+    alert("La création de demande est gérée par le backend. Elle sera intégrée très prochainement.");
     setIsModalOpen(false);
-    setCurrentPage(1);
   };
 
   // =========================================================================
@@ -151,7 +139,7 @@ export default function DemandesChequierPage() {
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold tracking-widest text-emerald-200 uppercase block">Total En Impression</span>
                     <div className="text-4xl font-black tracking-tight">{totalEnProduction}</div>
-                    <p className="text-xs text-emerald-100 font-medium pt-1">Flux global de l'imprimerie</p>
+                    <p className="text-xs text-emerald-100 font-medium pt-1">Flux global de l&apos;imprimerie</p>
                   </div>
                   <Factory className="h-7 w-7 text-emerald-200/80 opacity-90 stroke-[1.8]" />
                 </div>
@@ -216,7 +204,11 @@ export default function DemandesChequierPage() {
               </div>
 
               <div className="divide-y divide-slate-100">
-                {paginatedDemandes.length > 0 ? (
+                {isLoading ? (
+                  <div className="p-12 text-center text-sm font-bold text-slate-500">
+                    Chargement des demandes en cours...
+                  </div>
+                ) : paginatedDemandes.length > 0 ? (
                   paginatedDemandes.map((item) => (
                     <div key={item.id} className="grid grid-cols-4 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
                       <span className="text-xs font-black text-slate-900 font-mono tracking-tight">

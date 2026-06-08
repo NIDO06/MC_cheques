@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 // Importation de jsPDF pour la génération et l'exportation du document en mémoire
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -17,30 +17,45 @@ import {
   UploadCloud,
   X
 } from "lucide-react";
-
-// =========================================================================
-// DONNÉES FICTIVES INITIALES (MOCK DATA)
-// À remplacer par vos futurs appels API (ex: fetch('/api/dashboard'))
-// =========================================================================
-const INITIAL_ACTIVITIES = [
-  { id: 1, type: "success", title: "Nouvelle demande reçue", desc: "SARL Delta Tech (Compte COAT-2)", time: "Il y a 12 min", ref: "N° 8541" },
-  { id: 2, type: "danger", title: "Demande annulée par l'administrateur", desc: "Signature non conforme", time: "Il y a 1 heure", ref: "N° 8320" },
-  { id: 3, type: "info", title: "Chéquier prêt pour retrait", desc: "Client: Koffi Amadou", time: "Il y a 2 heures", ref: "N° 7942" }
-];
-
-const INITIAL_STATS = {
-  totalClients: 1284,
-  demandesAttente: 42,
-  enProduction: 156
-};
+import { apiClient } from '@/lib/api';
 
 export default function DashboardPage() {
-  // États de l'application
-  const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
-  const [baseStats, setBaseStats] = useState(INITIAL_STATS);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [baseStats, setBaseStats] = useState({ totalClients: 0, demandesAttente: 0, enProduction: 0 });
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setIsLoading(true);
+      try {
+        const cheques = await apiClient.getCheques();
+
+        const totalClients = new Set(cheques.map((cheque: any) => cheque.user_id)).size;
+        const demandesAttente = cheques.filter((cheque: any) => cheque.statut_demande?.name === 'EN_ATTENTE').length;
+        const enProduction = cheques.filter((cheque: any) => cheque.statut_demande?.name === 'EN_PRODUCTION').length;
+        const activitiesData = cheques.slice(0, 5).map((cheque: any) => ({
+          id: cheque.id,
+          type: cheque.statut_demande?.name === 'EN_ATTENTE' ? 'info' : cheque.statut_demande?.name === 'EN_PRODUCTION' ? 'success' : 'info',
+          title: `Demande ${cheque.cheque_number || cheque.id}`,
+          desc: `Client: ${cheque.user_id || 'N/A'} • Compte: ${cheque.account_number || 'N/A'}`,
+          time: cheque.issued_at ? new Date(cheque.issued_at).toLocaleString('fr-FR') : 'Récent',
+          ref: cheque.cheque_number || `N° ${cheque.id}`,
+        }));
+
+        setActivities(activitiesData);
+        setBaseStats({ totalClients, demandesAttente, enProduction });
+      } catch (error) {
+        console.error('Erreur lors de la récupération du dashboard :', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, []);
 
   // État pour le formulaire de nouvelle demande
   const [newDemande, setNewDemande] = useState({ clientName: "", accountType: "Courant" });
@@ -167,33 +182,10 @@ export default function DashboardPage() {
     document.getElementById("specimen-upload")?.click();
   };
 
-  // 3. Action : Soumission du formulaire de nouvelle demande
+  // 3. Action : soumission d'une demande (fonctionnalité backend)
   const handleCreateDemande = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDemande.clientName.trim()) return;
-
-    const randomRef = `N° ${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    // Ajouter au flux d'activité récente
-    const newActivity = {
-      id: Date.now(),
-      type: "success",
-      title: "Nouvelle demande créée",
-      desc: `Client: ${newDemande.clientName} (Compte ${newDemande.accountType})`,
-      time: "À l'instant",
-      ref: randomRef
-    };
-
-    setActivities([newActivity, ...activities]);
-    
-    // Mettre à jour dynamiquement les compteurs de statistiques
-    setBaseStats(prev => ({
-      ...prev,
-      demandesAttente: prev.demandesAttente + 1
-    }));
-
-    // Réinitialisation
-    setNewDemande({ clientName: "", accountType: "Courant" });
+    alert("La création de demande est désormais gérée par le backend. Veuillez utiliser l'interface d'administration dédiée.");
     setIsModalOpen(false);
   };
 

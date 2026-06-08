@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Banknote, Mail, Lock, ArrowRight, LucideAlertCircle } from 'lucide-react';
+import { apiClient } from '@/lib/api';
 
 export default function UniversalLoginPage() {
   const router = useRouter();
@@ -12,33 +13,55 @@ export default function UniversalLoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    const cleanEmail = email.trim().toLowerCase();
+    try {
+      // Appel à l'API backend Laravel
+      const { user } = await apiClient.login({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-    // Simulation d'une logique d'authentification et de routage basée sur les rôles
-    // (À remplacer plus tard par ton appel API de ton backend Laravel)
-    setTimeout(() => {
-      if (cleanEmail.includes('superadmin')) {
-        // Redirection Super Administrateur (Gestion globale de la plateforme, des banques, etc.)
-        router.push('/super-admin/dashboard');
-      } else if (cleanEmail.includes('admin') || cleanEmail.endsWith('@acefinance.com')) {
-        // Redirection Administrateur Institutionnel (Ex: ACE Finance, UBA, etc.)
-        router.push('/admin/dashboard');
-      } else if (cleanEmail.includes('agent') || cleanEmail.includes('staff')) {
-        // Redirection Agent / Gestionnaire de compte (Traitement des chéquiers)
-        router.push('/agent/dashboard');
-      } else if (cleanEmail.length > 0 && password.length > 0) {
-        // Redirection par défaut : Espace Client (Entreprises et Particuliers)
-        router.push('/client/dashboard');
-      } else {
-        setError('Identifiants incorrects. Veuillez réessayer.');
+      if (!user) {
+        setError('Erreur lors de la connexion. Veuillez réessayer.');
         setIsLoading(false);
+        return;
       }
-    }, 800); // Léger délai pour simuler l'attente réseau
+
+      // Déterminer la route en fonction du rôle de l'utilisateur
+      let redirectPath = '/client/dashboard';
+
+      // Vérifier les rôles de l'utilisateur
+      if (user.roles && user.roles.length > 0) {
+        const roles = user.roles.map(r => r.toLowerCase());
+        
+        if (roles.includes('super-admin') || roles.includes('super_admin')) {
+          redirectPath = '/super-admin/dashboard';
+        } else if (roles.includes('admin')) {
+          redirectPath = '/admin/dashboard';
+        } else if (roles.includes('agent')) {
+          redirectPath = '/agent/dashboard';
+        } else if (roles.includes('client')) {
+          redirectPath = '/client/dashboard';
+        }
+      }
+
+      // Redirection
+      router.push(redirectPath);
+    } catch (err: any) {
+      console.error('Erreur de connexion:', err);
+      setError(
+        err.message === 'Identifiants invalides.' 
+          ? 'Email ou mot de passe incorrect.'
+          : err.message === 'Compte désactivé.'
+            ? 'Votre compte a été désactivé. Contactez le support.'
+            : 'Erreur de connexion. Veuillez réessayer plus tard.'
+      );
+      setIsLoading(false);
+    }
   };
 
   return (
