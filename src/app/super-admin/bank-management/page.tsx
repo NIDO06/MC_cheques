@@ -15,12 +15,13 @@ import {
   ArrowRight,
   X,
   Bell,
-  Info
+  Info,
+  Loader
 } from "lucide-react";
 
-// Importations dynamiques pour la génération et le stockage du PDF
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { apiClient } from "@/lib/api";
 
 interface InstitutionData {
   logoText: string;
@@ -52,12 +53,8 @@ export default function NetworkDashboard() {
     { id: 3, type: "SUCCES", titre: "Mise à jour Certificats", temps: "1h ago", description: "Mise à jour réussie des clés de chiffrement TLS 1.3 sur tout le réseau." }
   ]);
 
-  const [institutions, setInstitutions] = useState<InstitutionData[]>([
-    { logoText: "BNP", logoBg: "bg-emerald-800 text-white", name: "BNP Paribas", code: "ID : 4922 - BANK-FR", status: "ACTIF", agences: 249, volume24h: 4205000 },
-    { logoText: "SG", logoBg: "bg-slate-200 text-slate-700", name: "Société Générale", code: "ID : 8821 - BANK-FR", status: "ACTIF", agences: 182, volume24h: 2890400 },
-    { logoText: "BCE", logoBg: "bg-rose-100 text-rose-700", name: "Banque de l'Est", code: "ID : 2241 - BANK-FR", status: "MAINTENANCE", agences: 15, volume24h: 0 },
-    { logoText: "CA", logoBg: "bg-emerald-100 text-emerald-800", name: "Crédit Agricole", code: "ID : 1102 - BANK-FR", status: "ACTIF", agences: 412, volume24h: 7110850 }
-  ]);
+  const [institutions, setInstitutions] = useState<InstitutionData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formName, setFormName] = useState("");
@@ -65,6 +62,37 @@ export default function NetworkDashboard() {
   const [formAgences, setFormAgences] = useState("");
   const [formVolume, setFormVolume] = useState("");
   const [formStatus, setFormStatus] = useState<"ACTIF" | "MAINTENANCE">("ACTIF");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Charger les banques depuis l'API
+  useEffect(() => {
+    const loadBanks = async () => {
+      setIsLoading(true);
+      try {
+        const banks = await apiClient.getBanks();
+        const bgColors = ["bg-blue-800 text-white", "bg-purple-800 text-white", "bg-teal-700 text-white", "bg-amber-700 text-white", "bg-indigo-800 text-white"];
+        
+        const formattedBanks = banks.map((bank: any, index: number) => ({
+          logoText: bank.name.substring(0, 3).toUpperCase(),
+          logoBg: bgColors[index % bgColors.length],
+          name: bank.name,
+          code: `ID : ${bank.swift_code || bank.id} - BANK-${bank.country_code || 'CM'}`,
+          status: bank.is_active ? "ACTIF" : "MAINTENANCE" as "ACTIF" | "MAINTENANCE",
+          agences: bank.agencies_count || 0,
+          volume24h: bank.volume_24h || 0
+        }));
+        
+        setInstitutions(formattedBanks);
+      } catch (error) {
+        console.error('Erreur lors du chargement des banques:', error);
+        setInstitutions([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadBanks();
+  }, []);
 
   useEffect(() => {
     if (toastMessage) {
@@ -153,33 +181,47 @@ export default function NetworkDashboard() {
     }
   };
 
-  const handleAddBank = (e: React.FormEvent) => {
+  const handleAddBank = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formCode.trim()) return;
 
-    const prefix = formName.substring(0, 3).toUpperCase();
-    const bgColors = ["bg-blue-800 text-white", "bg-purple-800 text-white", "bg-teal-700 text-white", "bg-amber-700 text-white"];
-    const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
+    setIsSubmitting(true);
+    try {
+      const newBank = await apiClient.createBank({
+        name: formName.trim(),
+        swift_code: formCode.trim(),
+        is_active: formStatus === "ACTIF",
+      });
 
-    const newBank: InstitutionData = {
-      logoText: prefix,
-      logoBg: randomBg,
-      name: formName.trim(),
-      code: `ID : ${formCode.trim()} - BANK-FR`,
-      status: formStatus,
-      agences: Math.max(0, parseInt(formAgences) || 0),
-      volume24h: Math.max(0, parseFloat(formVolume) || 0)
-    };
+      // Recharger la liste des banques
+      const banks = await apiClient.getBanks();
+      const bgColors = ["bg-blue-800 text-white", "bg-purple-800 text-white", "bg-teal-700 text-white", "bg-amber-700 text-white", "bg-indigo-800 text-white"];
+      
+      const formattedBanks = banks.map((bank: any, index: number) => ({
+        logoText: bank.name.substring(0, 3).toUpperCase(),
+        logoBg: bgColors[index % bgColors.length],
+        name: bank.name,
+        code: `ID : ${bank.swift_code || bank.id} - BANK-${bank.country_code || 'CM'}`,
+        status: bank.is_active ? "ACTIF" : "MAINTENANCE" as "ACTIF" | "MAINTENANCE",
+        agences: bank.agencies_count || 0,
+        volume24h: bank.volume_24h || 0
+      }));
+      
+      setInstitutions(formattedBanks);
+      setIsModalOpen(false);
+      setFormName("");
+      setFormCode("");
+      setFormAgences("");
+      setFormVolume("");
+      setFormStatus("ACTIF");
 
-    setInstitutions([newBank, ...institutions]);
-    setIsModalOpen(false);
-    setFormName("");
-    setFormCode("");
-    setFormAgences("");
-    setFormVolume("");
-    setFormStatus("ACTIF");
-
-    setToastMessage(`Établissement "${newBank.name}" injecté.`);
+      setToastMessage(`Banque "${newBank.name}" créée avec succès.`);
+    } catch (error: any) {
+      console.error('Erreur lors de la création de la banque:', error);
+      setToastMessage(error.message || "Erreur lors de la création de la banque.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const toggleStatusDirect = (code: string) => {
@@ -337,7 +379,93 @@ export default function NetworkDashboard() {
       {/* MODALE FORMULAIRE */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          {/* Code inchangé du formulaire de création de banque... */}
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-slate-100">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-slate-900">Ajouter une Nouvelle Banque</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddBank} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nom de la banque</label>
+                <input
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="ex: BNP Paribas"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0B6634]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Code Banque</label>
+                <input
+                  type="text"
+                  value={formCode}
+                  onChange={(e) => setFormCode(e.target.value)}
+                  placeholder="ex: 4922"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0B6634]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre d'agences</label>
+                <input
+                  type="number"
+                  value={formAgences}
+                  onChange={(e) => setFormAgences(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0B6634]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Volume 24h (FCFA)</label>
+                <input
+                  type="number"
+                  value={formVolume}
+                  onChange={(e) => setFormVolume(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0B6634]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Statut</label>
+                <select
+                  value={formStatus}
+                  onChange={(e) => setFormStatus(e.target.value as "ACTIF" | "MAINTENANCE")}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 focus:outline-none focus:border-[#0B6634]"
+                >
+                  <option value="ACTIF">ACTIF</option>
+                  <option value="MAINTENANCE">MAINTENANCE</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isSubmitting}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-[#0B6634] text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-[#074724] cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSubmitting && <Loader size={14} className="animate-spin" />}
+                  {isSubmitting ? "Création..." : "Ajouter la banque"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

@@ -1,12 +1,27 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, FileText, Settings, Banknote } from 'lucide-react';
+import { apiClient, type User } from '@/lib/api';
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    setUser(apiClient.getStoredUserSession());
+  }, []);
+
+  const displayName = user?.name || 'Jean Dupont';
+  const displayEmail = user?.email || 'contact@acefinance.com';
+  const initials = displayName
+    .split(' ')
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   const menuItems = [
     { name: 'Tableau de bord', href: '/client/dashboard', icon: LayoutDashboard },
@@ -51,11 +66,11 @@ export default function Sidebar() {
       {/* Bas de la Sidebar : Profil Utilisateur connecté */}
       <div className="p-4 border-t border-gray-200 bg-white flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-          JD
+          {initials}
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="text-xs font-bold text-gray-900 truncate">Jean Dupont</span>
-          <span className="text-[10px] font-semibold text-gray-400 truncate">ACE Finance</span>
+          <span className="text-xs font-bold text-gray-900 truncate">{displayName}</span>
+          <span className="text-[10px] font-semibold text-gray-400 truncate">{displayEmail}</span>
         </div>
       </div>
     </aside>

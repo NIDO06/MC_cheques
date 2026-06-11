@@ -40,7 +40,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           />
         ) : null}
 
-        <div className="flex-1 flex flex-col min-w-0 lg:ml-[280px]">
+        <div className="flex-1 flex flex-col min-w-0">
           <header className="bg-white border-b border-gray-200 h-[73px] px-6 flex items-center justify-between w-full shrink-0 sticky top-0 z-40">
             <button
               type="button"
@@ -55,7 +55,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1">
             {children}
           </main>
         </div>

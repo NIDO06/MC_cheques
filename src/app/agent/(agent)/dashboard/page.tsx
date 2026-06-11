@@ -15,7 +15,8 @@ import {
   Clock, 
   ArrowUpRight,
   UploadCloud,
-  X
+  X,
+  Loader
 } from "lucide-react";
 import { apiClient } from '@/lib/api';
 
@@ -23,9 +24,11 @@ export default function DashboardPage() {
   const [activities, setActivities] = useState<any[]>([]);
   const [baseStats, setBaseStats] = useState({ totalClients: 0, demandesAttente: 0, enProduction: 0 });
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [newDemande, setNewDemande] = useState({ clientName: "", accountType: "Courant" });
+  const [isSubmittingDemande, setIsSubmittingDemande] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -56,9 +59,6 @@ export default function DashboardPage() {
 
     loadDashboard();
   }, []);
-
-  // État pour le formulaire de nouvelle demande
-  const [newDemande, setNewDemande] = useState({ clientName: "", accountType: "Courant" });
 
   // =========================================================================
   // ACTION MODIFIÉE : GÉNÉRATION ET EXPORTATION DU RAPPORT EN PDF REEL
@@ -182,11 +182,37 @@ export default function DashboardPage() {
     document.getElementById("specimen-upload")?.click();
   };
 
-  // 3. Action : soumission d'une demande (fonctionnalité backend)
-  const handleCreateDemande = (e: React.FormEvent) => {
+  // 3. Action : soumission d'une demande (créer via l'API backend)
+  const handleCreateDemande = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert("La création de demande est désormais gérée par le backend. Veuillez utiliser l'interface d'administration dédiée.");
-    setIsModalOpen(false);
+    setIsSubmittingDemande(true);
+
+    try {
+      const requestData = {
+        bank_name: newDemande.clientName,
+        account_number: newDemande.accountType,
+        cheque_number: `CHQ-${Date.now()}`,
+        amount: 0,
+      };
+
+      await apiClient.createRequest(requestData);
+
+      // Recharger les données après création
+      const cheques = await apiClient.getCheques();
+      const totalClients = new Set(cheques.map((cheque: any) => cheque.user_id)).size;
+      const demandesAttente = cheques.filter((cheque: any) => cheque.statut_demande?.name === 'EN_ATTENTE').length;
+      const enProduction = cheques.filter((cheque: any) => cheque.statut_demande?.name === 'EN_PRODUCTION').length;
+
+      setBaseStats({ totalClients, demandesAttente, enProduction });
+
+      setIsModalOpen(false);
+      setNewDemande({ clientName: "", accountType: "Courant" });
+    } catch (error: any) {
+      console.error('Erreur lors de la création de la demande:', error);
+      alert("Erreur : " + (error.message || "Une erreur est survenue lors de la création de la demande."));
+    } finally {
+      setIsSubmittingDemande(false);
+    }
   };
 
   return (
@@ -399,15 +425,18 @@ export default function DashboardPage() {
                 <button 
                   type="button" 
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 border-2 border-slate-200 text-slate-800 font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-all"
+                  disabled={isSubmittingDemande}
+                  className="flex-1 border-2 border-slate-200 text-slate-800 font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-all disabled:opacity-50"
                 >
                   Annuler
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 bg-[#0B6634] hover:bg-[#074724] text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md transition-all"
+                  disabled={isSubmittingDemande}
+                  className="flex-1 bg-[#0B6634] hover:bg-[#074724] text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Confirmer la demande
+                  {isSubmittingDemande && <Loader size={14} className="animate-spin" />}
+                  {isSubmittingDemande ? "Création..." : "Confirmer la demande"}
                 </button>
               </div>
             </form>

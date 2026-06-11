@@ -9,6 +9,8 @@ export interface ApiResponse<T = any> {
   message?: string;
   data?: T;
   user?: any;
+  token?: string;
+  token_type?: string;
   errors?: Record<string, string[]>;
 }
 
@@ -28,9 +30,11 @@ export interface User {
 
 class ApiClient {
   private baseUrl: string;
+  private authToken: string | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
+    this.authToken = this.getStoredAuthToken();
   }
 
   /**
@@ -46,6 +50,12 @@ class ApiClient {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     });
+
+    const authToken = this.authToken || this.getStoredAuthToken();
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
+      this.authToken = authToken;
+    }
 
     if (options.headers) {
       if (options.headers instanceof Headers) {
@@ -129,6 +139,10 @@ class ApiClient {
       this.storeUserSession(response.user);
     }
 
+    if (response.token) {
+      this.storeAuthToken(response.token);
+    }
+
     return {
       user: response.user || ({} as User),
       message: response.message || 'Connexion réussie',
@@ -143,8 +157,9 @@ class ApiClient {
       method: 'POST',
     });
 
-    // Nettoyer la session locale
+    // Nettoyer la session locale et le token
     this.clearUserSession();
+    this.clearAuthToken();
 
     return {
       message: response.message || 'Déconnexion réussie',
@@ -156,7 +171,10 @@ class ApiClient {
    */
   async getCurrentUser(): Promise<User | null> {
     const stored = this.getUserSession();
-    if (stored) return stored;
+    if (stored) {
+      this.authToken = this.authToken || this.getStoredAuthToken();
+      return stored;
+    }
 
     try {
       const response = await this.request<User>('/user');
@@ -169,6 +187,10 @@ class ApiClient {
     }
 
     return null;
+  }
+
+  getStoredUserSession(): User | null {
+    return this.getUserSession();
   }
 
   /**
@@ -248,6 +270,28 @@ class ApiClient {
   }
 
   /**
+   * Crée une nouvelle banque
+   */
+  async createBank(data: any): Promise<any> {
+    const response = await this.request('/banks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return response.data;
+  }
+
+  /**
+   * Crée un nouveau chèque (demande)
+   */
+  async createRequest(data: any): Promise<any> {
+    const response = await this.request('/cheques', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return response.data;
+  }
+
+  /**
    * Stocke la session utilisateur localement
    */
   private storeUserSession(user: User): void {
@@ -259,6 +303,27 @@ class ApiClient {
   /**
    * Récupère la session utilisateur stockée
    */
+  private getStoredAuthToken(): string | null {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('auth_token');
+    }
+    return null;
+  }
+
+  private storeAuthToken(token: string): void {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('auth_token', token);
+    }
+    this.authToken = token;
+  }
+
+  private clearAuthToken(): void {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('auth_token');
+    }
+    this.authToken = null;
+  }
+
   private getUserSession(): User | null {
     if (typeof window !== 'undefined') {
       const stored = sessionStorage.getItem('user');

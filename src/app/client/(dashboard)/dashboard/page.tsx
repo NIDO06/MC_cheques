@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Plus, 
@@ -12,12 +12,13 @@ import {
   X, 
   CheckCircle 
 } from 'lucide-react';
+import { apiClient, type User } from '@/lib/api';
 
 interface RequestItem {
   id: string;
   type: string;
   date: string;
-  status: 'En attente' | 'Livré';
+  status: 'En attente' | 'Livré' | string;
 }
 
 export default function DashboardPage() {
@@ -30,31 +31,99 @@ export default function DashboardPage() {
   const [successToast, setSuccessToast] = useState('');
   const [checkType, setCheckType] = useState('Standard 50 Pages');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [requests, setRequests] = useState<RequestItem[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
 
-  const [requests, setRequests] = useState<RequestItem[]>([
-    { id: 'REQ-2023-0892', type: 'Standard 50 Pages', date: 'Oct 12, 2023', status: 'En attente' },
-    { id: 'REQ-2023-0914', type: 'Premium Gold', date: 'Oct 15, 2023', status: 'En attente' },
-    { id: 'REQ-2023-0788', type: 'Business Desk', date: 'Oct 05, 2023', status: 'Livré' },
-  ]);
+  useEffect(() => {
+    const loadClientDashboard = async () => {
+      setIsLoadingRequests(true);
+      try {
+        const [currentUser, cheques] = await Promise.all([
+          apiClient.getCurrentUser(),
+          apiClient.getCheques<any[]>(),
+        ]);
+
+        setUser(currentUser);
+
+        const formattedRequests = cheques.map((cheque: any) => ({
+          id: cheque.cheque_number || `REQ-${cheque.id}`,
+          type: cheque.bank_name || cheque.account_number || 'Demande de chèque',
+          date: cheque.issued_at
+            ? new Date(cheque.issued_at).toLocaleDateString('fr-FR', {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+              })
+            : 'Date inconnue',
+          status:
+            cheque.statut_demande?.name === 'EN_ATTENTE'
+              ? 'En attente'
+              : cheque.statut_demande?.name === 'LIVRÉ' || cheque.statut_demande?.name === 'LIVRE'
+              ? 'Livré'
+              : cheque.statut_demande?.name || 'En attente',
+        }));
+
+        setRequests(formattedRequests);
+      } catch (error) {
+        console.error('Erreur lors de la récupération des demandes :', error);
+      } finally {
+        setIsLoadingRequests(false);
+      }
+    };
+
+    loadClientDashboard();
+  }, []);
 
   // --- Actions ---
-  const handleCreateRequest = (e: React.FormEvent) => {
+  const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const generatedId = `REQ-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-      const formattedDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      setRequests(prev => [{ id: generatedId, type: checkType, date: formattedDate, status: 'En attente' }, ...prev]);
-      setIsSubmitting(false);
+    try {
+      // Appeler l'API pour créer une demande
+      await apiClient.createRequest({
+        bank_name: 'Client Request',
+        account_number: checkType,
+        cheque_number: `CHQ-${Date.now()}`,
+        amount: 0,
+      });
+
+      // Recharger les demandes
+      const cheques = await apiClient.getCheques<any[]>();
+      const formattedRequests = cheques.map((cheque: any) => ({
+        id: cheque.cheque_number || `REQ-${cheque.id}`,
+        type: cheque.bank_name || cheque.account_number || 'Demande de chèque',
+        date: cheque.issued_at
+          ? new Date(cheque.issued_at).toLocaleDateString('fr-FR', {
+              year: 'numeric',
+              month: 'short',
+              day: '2-digit',
+            })
+          : 'Date inconnue',
+        status:
+          cheque.statut_demande?.name === 'EN_ATTENTE'
+            ? 'En attente'
+            : cheque.statut_demande?.name === 'LIVRÉ' || cheque.statut_demande?.name === 'LIVRE'
+            ? 'Livré'
+            : cheque.statut_demande?.name || 'En attente',
+      }));
+
+      setRequests(formattedRequests);
       setIsRequestModalOpen(false);
-      setSuccessToast(`Demande ${generatedId} enregistrée !`);
+      setSuccessToast('Demande créée avec succès !');
       setTimeout(() => setSuccessToast(''), 4000);
-    }, 700);
+    } catch (error) {
+      console.error('Erreur lors de la création de la demande:', error);
+      setSuccessToast('Erreur lors de la création de la demande');
+      setTimeout(() => setSuccessToast(''), 4000);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const countEnCours = requests.filter(r => r.status === 'En attente').length;
-  const countLivres = requests.filter(r => r.status === 'Livré').length + 11;
+  const countLivres = requests.filter(r => r.status === 'Livré').length;
 
   return (
     // Sécurité contraste : application d'un fond blanc/gris clair global pour éliminer la zone noire indésirable
@@ -76,7 +145,7 @@ export default function DashboardPage() {
               Dashboard Client
             </span>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              Welcome, Jean Dupont
+              Welcome, {user?.name || 'Jean Dupont'}
             </h1>
             <p className="text-slate-500 text-sm mt-1 font-medium">
               Gérez vos carnets de chèques et suivez vos demandes en temps réel.
@@ -194,28 +263,38 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {requests.map((req) => (
-                  <tr key={req.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors last:border-none">
-                    <td className="py-4 px-6 text-sm font-bold text-slate-800 tracking-tight">{req.id}</td>
-                    <td className="py-4 px-6 text-sm font-medium text-slate-600">
-                      <span className="flex items-center gap-2">
-                        {req.type}
-                        {req.status === 'En attente' && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="En traitement"></span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-sm font-semibold text-slate-400">{req.date}</td>
-                    <td className="py-4 px-6 text-right">
-                      <button 
-                        onClick={() => setSelectedRequest(req)}
-                        className="text-slate-400 hover:text-[#0f6e38] transition-colors p-1 cursor-pointer"
-                      >
-                        <ExternalLink size={16} />
-                      </button>
-                    </td>
+                {isLoadingRequests ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 px-6 text-center text-sm text-slate-500">Chargement des demandes...</td>
                   </tr>
-                ))}
+                ) : requests.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 px-6 text-center text-sm text-slate-500">Aucune demande trouvée pour votre compte.</td>
+                  </tr>
+                ) : (
+                  requests.map((req) => (
+                    <tr key={req.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors last:border-none">
+                      <td className="py-4 px-6 text-sm font-bold text-slate-800 tracking-tight">{req.id}</td>
+                      <td className="py-4 px-6 text-sm font-medium text-slate-600">
+                        <span className="flex items-center gap-2">
+                          {req.type}
+                          {req.status === 'En attente' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="En traitement"></span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-sm font-semibold text-slate-400">{req.date}</td>
+                      <td className="py-4 px-6 text-right">
+                        <button 
+                          onClick={() => setSelectedRequest(req)}
+                          className="text-slate-400 hover:text-[#0f6e38] transition-colors p-1 cursor-pointer"
+                        >
+                          <ExternalLink size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
